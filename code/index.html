@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <title>熊頭三消</title>
+  <link rel="icon" href="https://raw.githubusercontent.com/ryan1114-carer/bear-3remove/refs/heads/main/images/icon.png" type="image/png">
+  <style>
+    body {
+      background: url('https://raw.githubusercontent.com/ryan1114-carer/bear-3remove/refs/heads/main/images/bgimg.png') no-repeat center center fixed;
+      background-size: cover;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+    #moves, #timer {
+      font-size: 24px;
+      margin-bottom: 10px;
+      background: rgba(255,255,255,0.7);
+      padding: 5px 10px;
+      border-radius: 8px;
+    }
+    #tools, #victory, #defeat {
+      margin-top: 10px;
+    }
+    button {
+      margin: 0 5px;
+      padding: 8px;
+      font-size: 16px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+    }
+    #game {
+      display: grid;
+      grid-template-columns: repeat(9, 64px);
+      grid-template-rows: repeat(9, 64px);
+      gap: 2px;
+      background: #ccc;
+      padding: 4px;
+      border: 4px solid #555;
+    }
+    .tile {
+      width: 64px;
+      height: 64px;
+      background-size: cover;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: all 0.3s;
+    }
+    #victory, #defeat {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+    }
+    #victory button, #defeat button {
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+<audio id="bgm" src="https://github.com/ryan1114-carer/bear-3remove/raw/refs/heads/main/music/bgm.mp3" autoplay loop></audio>
+<div id="moves">剩餘步數: ---</div>
+<div id="timer">剩餘時間: 60 秒</div>
+<div id="game"></div>
+<div id="tools">
+  <button id="moveBonusBtn" onclick="useMoveBonus()">➕步數+8</button>
+  <button id="bombBtn" onclick="useBomb()">💣消除3x3</button>
+  <button id="shuffleBtn" onclick="useShuffle()">🌪️大風吹 (剩3次)</button>
+</div>
+<div id="victory">
+  <h1>🎉過關啦！🎉</h1>
+  <button onclick="restartGame()">再玩一次</button>
+</div>
+<div id="defeat">
+  <h1>💥失敗了！💥</h1>
+  <button onclick="restartGame()">再挑戰一次</button>
+</div>
+
+<script>
+const game = document.getElementById("game");
+const movesDisplay = document.getElementById("moves");
+const timerDisplay = document.getElementById("timer");
+const moveBonusBtn = document.getElementById("moveBonusBtn");
+const bombBtn = document.getElementById("bombBtn");
+const shuffleBtn = document.getElementById("shuffleBtn");
+const victoryDiv = document.getElementById("victory");
+const defeatDiv = document.getElementById("defeat");
+const tools = document.getElementById("tools");
+const size = 9;
+const fruitImages = [
+  'https://raw.githubusercontent.com/ryan1114-carer/bear-3remove/refs/heads/main/images/red.png',
+  'https://raw.githubusercontent.com/ryan1114-carer/bear-3remove/refs/heads/main/images/orange.png',
+  'https://raw.githubusercontent.com/ryan1114-carer/bear-3remove/refs/heads/main/images/yellow.png',
+  'https://raw.githubusercontent.com/ryan1114-carer/bear-3remove/refs/heads/main/images/green.png',
+  'https://raw.githubusercontent.com/ryan1114-carer/bear-3remove/refs/heads/main/images/sky_blue.png',
+  'https://raw.githubusercontent.com/ryan1114-carer/bear-3remove/refs/heads/main/images/blue.png',
+  'https://raw.githubusercontent.com/ryan1114-carer/bear-3remove/refs/heads/main/images/purple.png'
+];
+let board = [];
+let firstTile = null;
+let moves = 56;
+let shuffleTimes = 3;
+let moveBonusUsed = false;
+let bombUsed = false;
+let timeLeft = 120;
+let timer;
+
+function updateMoves() {
+  movesDisplay.textContent = `剩餘步數: ${moves}`;
+  if (moves <= 0) {
+    checkVictory();
+  }
+}
+
+function updateTimer() {
+  timerDisplay.textContent = `剩餘時間: ${timeLeft} 秒`;
+}
+
+function startTimer() {
+  timer = setInterval(() => {
+    timeLeft--;
+    updateTimer();
+    if (timeLeft <= 0) {
+      clearInterval(timer);
+      gameOver();
+    }
+  }, 1000);
+}
+
+function gameOver() {
+  game.style.display = "none";
+  tools.style.display = "none";
+  movesDisplay.style.display = "none";
+  timerDisplay.style.display = "none";
+  defeatDiv.style.display = "flex";
+}
+
+function createBoard() {
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const tile = document.createElement("div");
+      tile.classList.add("tile");
+      tile.dataset.x = x;
+      tile.dataset.y = y;
+      tile.addEventListener("click", onTileClick);
+      board.push(tile);
+      game.appendChild(tile);
+    }
+  }
+  fillBoard();
+}
+
+function randomFruit() {
+  return fruitImages[Math.floor(Math.random() * fruitImages.length)];
+}
+
+function getTile(x, y) {
+  if (x < 0 || x >= size || y < 0 || y >= size) return null;
+  return board[y * size + x];
+}
+
+function fillBoard() {
+  do {
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const tile = getTile(x, y);
+        tile.dataset.fruit = randomFruit();
+        tile.style.backgroundImage = `url(${tile.dataset.fruit})`;
+      }
+    }
+  } while (findMatches().length > 0);
+}
+
+function onTileClick(e) {
+  const tile = e.target;
+  if (firstTile && firstTile !== tile) {
+    swapTiles(firstTile, tile);
+    moves--;
+    updateMoves();
+    setTimeout(() => {
+      handleMatches();
+    }, 300);
+    firstTile.style.border = "none";
+    firstTile = null;
+  } else {
+    firstTile = tile;
+    tile.style.border = "2px solid red";
+  }
+}
+
+function swapTiles(tile1, tile2) {
+  const temp = tile1.dataset.fruit;
+  tile1.dataset.fruit = tile2.dataset.fruit;
+  tile2.dataset.fruit = temp;
+
+  tile1.style.backgroundImage = `url(${tile1.dataset.fruit})`;
+  tile2.style.backgroundImage = `url(${tile2.dataset.fruit})`;
+}
+
+function findMatches() {
+  let matched = [];
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size - 2; x++) {
+      const a = getTile(x, y), b = getTile(x+1, y), c = getTile(x+2, y);
+      if (a.dataset.fruit && a.dataset.fruit === b.dataset.fruit && a.dataset.fruit === c.dataset.fruit) {
+        matched.push(a, b, c);
+      }
+    }
+  }
+  for (let x = 0; x < size; x++) {
+    for (let y = 0; y < size - 2; y++) {
+      const a = getTile(x, y), b = getTile(x, y+1), c = getTile(x, y+2);
+      if (a.dataset.fruit && a.dataset.fruit === b.dataset.fruit && a.dataset.fruit === c.dataset.fruit) {
+        matched.push(a, b, c);
+      }
+    }
+  }
+  return [...new Set(matched)];
+}
+
+function handleMatches() {
+  const matched = findMatches();
+  if (matched.length > 0) {
+    matched.forEach(tile => {
+      tile.dataset.fruit = "";
+      tile.style.backgroundImage = "none";
+    });
+    setTimeout(collapseBoard, 300);
+  }
+}
+
+function collapseBoard() {
+  for (let x = 0; x < size; x++) {
+    for (let y = size-1; y >= 0; y--) {
+      const tile = getTile(x, y);
+      if (!tile.dataset.fruit) {
+        for (let yy = y-1; yy >= 0; yy--) {
+          const above = getTile(x, yy);
+          if (above.dataset.fruit) {
+            tile.dataset.fruit = above.dataset.fruit;
+            tile.style.backgroundImage = `url(${tile.dataset.fruit})`;
+            above.dataset.fruit = "";
+            above.style.backgroundImage = "none";
+            break;
+          }
+        }
+      }
+    }
+  }
+  setTimeout(() => {
+    handleMatches();
+  }, 300);
+}
+
+function useMoveBonus() {
+  if (!moveBonusUsed) {
+    moves += 8;
+    updateMoves();
+    moveBonusUsed = true;
+    moveBonusBtn.textContent = "💩這個道具用完了";
+    moveBonusBtn.disabled = true;
+  }
+}
+
+function useBomb() {
+  if (!bombUsed) {
+    game.addEventListener('click', bombHandler, { once: true });
+    bombUsed = true;
+  } else {
+    bombBtn.textContent = "💩這個道具用完了";
+    bombBtn.disabled = true;
+  }
+}
+
+function bombHandler(e) {
+  const tile = e.target;
+  const x = +tile.dataset.x;
+  const y = +tile.dataset.y;
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      const t = getTile(x+dx, y+dy);
+      if (t) {
+        t.dataset.fruit = "";
+        t.style.backgroundImage = "none";
+      }
+    }
+  }
+  setTimeout(collapseBoard, 300);
+  bombBtn.textContent = "💩這個道具用完了";
+  bombBtn.disabled = true;
+}
+
+function useShuffle() {
+  if (shuffleTimes > 0) {
+    shuffleTimes--;
+    board.sort(() => Math.random() - 0.5);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const tile = getTile(x, y);
+        tile.dataset.x = x;
+        tile.dataset.y = y;
+        game.appendChild(tile);
+      }
+    }
+    shuffleBtn.textContent = shuffleTimes > 0 ? `🌪️大風吹 (剩${shuffleTimes}次)` : "💩用完了";
+    if (shuffleTimes === 0) shuffleBtn.disabled = true;
+    setTimeout(() => {
+      if (findMatches().length > 0) useShuffle();
+    }, 300);
+  }
+}
+
+function checkVictory() {
+  clearInterval(timer);
+  game.style.display = "none";
+  tools.style.display = "none";
+  movesDisplay.style.display = "none";
+  timerDisplay.style.display = "none";
+  victoryDiv.style.display = "flex";
+}
+
+function restartGame() {
+  location.reload();
+}
+
+createBoard();
+updateMoves();
+updateTimer();
+startTimer();
+</script>
+</body>
+  </html>
+  
