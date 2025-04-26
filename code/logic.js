@@ -1,3 +1,16 @@
+'use strict';
+
+/*
+
+熊頭三消
+    GitHub：ryan1114-carer
+
+*/
+
+/********** 禁止格式化此文档！ **********/
+
+
+
 const game = document.getElementById("game");
 const movesDisplay = document.getElementById("moves");
 const moveBonusBtn = document.getElementById("moveBonusBtn");
